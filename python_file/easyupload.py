@@ -6,7 +6,7 @@ from tkinter import messagebox
 import string
 import random
 import threading
-
+import numpy as np
 
 from wisepaasdatahubedgesdk.EdgeAgent import EdgeAgent
 import wisepaasdatahubedgesdk.Common.Constants as constant
@@ -15,20 +15,64 @@ from wisepaasdatahubedgesdk.Common.Utils import RepeatedTimer
 
 import serial
 
-def read_sensor():  
+# --------------------------------------------
+# init value
+course = np.zeros((7,14),dtype=int)
+for j in range(0,7):
+    if(j%2==0):
+      for i in range(0,14):
+        course[j][i]=1
+
+data_set={"Day":0,"Classtime":0,"Co2":0,"Temperature":0,"Humidity":0,"Course":course}
+# --------------------------------------------
+
+def predict_open_ac():
+# predict open condition Co2 > 1000
+# 空調開後檢測CO2有無超標(有人)反之停止送風
+  if(read_sensor()[0]<=1000):
+    #預測錯誤將下禮拜課表清空
+     course[data_set['Day']][data_set["Classtime"]]=0
+
+  return 0
+def read_sensor(): 
+  # CO2  temperature humidity
   SerialIn = serial.Serial("COM6",115200)
   sensor_all_data=[0,0,0]
   data_in = SerialIn.readline() 
   data_raw = data_in.decode('utf-8') 
-
-  Co2=int(float(data_raw[27:30]))
-  temperature=int(float(data_raw[6:8]))
-  humidity=int(float(data_raw[19:21]))
+  print(data_raw)
   
-  sensor_all_data[0]=Co2
-  sensor_all_data[1]=temperature
-  sensor_all_data[2]=humidity
-  return sensor_all_data
+  while True:
+      try:
+        Co2=int(float(data_raw[27:31]))
+        break
+      except ValueError:
+        Co2=int(float(data_raw[27:30]))
+
+  while True:
+      try:
+        temperature=int(float(data_raw[6:8]))
+        humidity=int(float(data_raw[19:21]))
+        break
+      except ValueError:
+        for a in range(0,2):
+          print("wating DHT11")
+          time.sleep(1)
+          
+          sensor_all_data=[0,0,0]
+          data_in = SerialIn.readline() 
+          data_raw = data_in.decode('utf-8') 
+          print(data_raw)   
+          
+  if(Co2<=200):
+      Co2=Co2*10
+  data_set['Co2']=Co2
+  data_set['Temperature']=temperature
+  data_set['Humidity']=humidity
+  # sensor_all_data[0]=Co2
+  # sensor_all_data[1]=temperature
+  # sensor_all_data[2]=humidity
+  return 0
 
 def generateConfig():
       config = EdgeConfig()
@@ -74,21 +118,21 @@ def generateConfig():
       deviceConfig.analogTagList.append(analog)
 
         
-      # discrete = DiscreteTagConfig(name = 'DTag',
-      # description = 'DTag ',
-      # readOnly = False,
-      # arraySize = 0,
-      # state0 = '0',
-      # state1 = '1')
-      # deviceConfig.discreteTagList.append(discrete)
+      discrete = DiscreteTagConfig(name = 'DTag',
+      description = 'DTag ',
+      readOnly = False,
+      arraySize = 0,
+      state0 = '0',
+      state1 = '1')
+      deviceConfig.discreteTagList.append(discrete)
       
         
-      # text = TextTagConfig(name = 'TTag',
-      # description = 'TTag ',
-      # readOnly = False,
-      # arraySize = 0)
-      # deviceConfig.textTagList.append(text)
-      # config.node.deviceList.append(deviceConfig)
+      text = TextTagConfig(name = 'TTag',
+      description = 'TTag ',
+      readOnly = False,
+      arraySize = 0)
+      deviceConfig.textTagList.append(text)
+      config.node.deviceList.append(deviceConfig)
       return config
 
 def generateData():
@@ -96,22 +140,22 @@ def generateData():
   
       deviceId = 'Dorm_323'
       tagName = 'Co2'
-      read_data=read_sensor()
-      value = read_data[0]
+      read_sensor()
+      value = data_set['Co2']
       tag = EdgeTag(deviceId, tagName, value)
       edgeData.tagList.append(tag)
 
       deviceId = 'Dorm_323'
       tagName = 'Temperature'
-      read_data=read_sensor()
-      value = read_data[1]
+      read_sensor()
+      value = data_set['Temperature']
       tag = EdgeTag(deviceId, tagName, value)
       edgeData.tagList.append(tag)
 
       deviceId = 'Dorm_323'
       tagName = 'Humidity'
-      read_data=read_sensor()
-      value = float(read_data[2])
+      read_sensor()
+      value = data_set['Humidity']
       tag = EdgeTag(deviceId, tagName, value)
       edgeData.tagList.append(tag)
       print(read_sensor())
@@ -132,15 +176,11 @@ def generateData():
       #edgeData.timestamp = datetime.datetime(2020,8,24,6,10,8)  # you can defne the timestamp(local time) of data 
       return edgeData
 
-# node id 7d9d1053-3d48-4f05-8889-337ac679ea7e
-# cerdential 11c500c9f08ffe5f45c0bb47270f4bwp
-# DCCS API URL =https://api-dccs-ensaas.sa.wise-paas.com
-
-# default_nodeId=a8f95c34-cc5c-4e7c-a6d2-32e736adff8f
-# Credential Key=dd579f280505c0162b1f7f945177a9w0
+# default_nodeId=233c19cb-325e-4209-a319-d8816b798e49
+# Credential Key=856e0a0ad738fe0fda4e23a3ccc165xk
 # DCCS API URL =https://api-dccs-ensaas.sa.wise-paas.com
 options = EdgeAgentOptions(
-  nodeId = '290b5e7d-2e89-4ac4-bf20-91efc5f7dc8a',        
+  nodeId = '233c19cb-325e-4209-a319-d8816b798e49',        
   type = constant.EdgeType['Gateway'],                    # 節點類型 (Gateway, Device), 預設是 Gateway
   deviceId = 'deviceId',                                  # 若 type 為 Device, 則必填
   heartbeat = 60,                                         # 預設是 60 seconds
@@ -156,7 +196,7 @@ options = EdgeAgentOptions(
                                                           # 若連線類型是 DCCS, DCCSOptions 為必填
   DCCS = DCCSOptions(
     apiUrl = 'https://api-dccs-ensaas.sa.wise-paas.com/',           # DCCS API Url
-    credentialKey = '8b9c89b7c8cbac2160b4fe10ee9cd0fo'    # Creadential key
+    credentialKey = '9764829d109bde7b3469518c96f53e02'    # Creadential key
   )
 )
 
@@ -167,13 +207,15 @@ config=generateConfig()
 edgeAgent.uploadConfig(action = constant.ActionType['Create'], edgeConfig = config)
 
 # read_sensor()
+print(course)
 while(1):
   config=generateConfig()
-  # edgeAgent.uploadConfig(action = constant.ActionType['Create'], edgeConfig = config)
-  # data=generateData()
-  # result = edgeAgent.sendData(data)
-  # print("sendData")
-  # time.sleep(1)
-  # edgeAgent.uploadConfig(action = constant.ActionType['Delete'], edgeConfig = config)
-  # time.sleep(1)
-  # print("delete_Data")
+  edgeAgent.uploadConfig(action = constant.ActionType['Create'], edgeConfig = config)
+  data=generateData()
+  result = edgeAgent.sendData(data)
+  print("sendData")
+  time.sleep(0.1)
+  
+  edgeAgent.uploadConfig(action = constant.ActionType['Delete'], edgeConfig = config)
+  time.sleep(0.1)
+  print("delete_Data")
