@@ -17,30 +17,49 @@ import serial
 
 # --------------------------------------------
 # init value
-course = np.zeros((7,14),dtype=int)
-for j in range(0,7):
-    if(j%2==0):
-      for i in range(0,14):
-        course[j][i]=1
-
-data_set={"Day":0,"Classtime":0,"Co2":0,"Temperature":0,"Humidity":0,"Course":course}
+course = np.ones((7,14),dtype=int)
+data_set={"Course":course,"flag":0,"Co2":0,"Temperature":0,"Humidity":0,
+          "Min":0,"Hour":0,"Weekday":0,"ACfunc":0,"AvgCo2":[400,400,400,400,400,400,400,400,400,400],
+          "AvgTemp":[25,25,25,25,25,25,25,25,25,25],
+          "AvgHumi":[50,50,50,50,50,50,50,50,50,50],"Count":0,
+          "Avg":[0,0,0],"Humithre":80,"Co2thre":1000,"Tempthre":26,
+          "CourseTime":"0000000000000000000000000000"}
 # --------------------------------------------
 
+def binary_to_hex(arr):
+  binary_string = ''.join(str(bit) for bit in arr)  # 將陣列中的值串起來
+  decimal_num = int(binary_string, 2)  # 將二進制轉換為十進制
+  hex_num = hex(decimal_num)[2:]  # 將十進制轉換為16進制，並刪除前兩個字元 '0x'
+  return hex_num
+def coding():
+  hex_code=''
+  for i in range(7):
+    binary_array = data_set["Course"][i]
+    hex_code += binary_to_hex(binary_array)
+  data_set["CourseTime"]=hex_code
+
+def readtime():
+  # 抓小時
+  data_set["Min"]=int(str(datetime.datetime.now())[14:16])
+  data_set["Hour"]=int(str(datetime.datetime.now())[11:13])
+# 抓日期(星期一是0星期日是6)
+  data_set["Weekday"]=datetime.datetime.weekday(datetime.datetime.now())
+    
 def predict_open_ac():
 # predict open condition Co2 > 1000
 # 空調開後檢測CO2有無超標(有人)反之停止送風
-  if(read_sensor()[0]<=1000):
+  read_sensor()
+  if(data_set['Co2']<=1000):
     #預測錯誤將下禮拜課表清空
-     course[data_set['Day']][data_set["Classtime"]]=0
+     course[data_set["Weekday"]][data_set["Hour"]]=0
 
   return 0
 def read_sensor(): 
   # CO2  temperature humidity
   SerialIn = serial.Serial("COM6",115200)
-  sensor_all_data=[0,0,0]
   data_in = SerialIn.readline() 
   data_raw = data_in.decode('utf-8') 
-  print(data_raw)
+  # print(data_raw)
   
   while True:
       try:
@@ -58,8 +77,7 @@ def read_sensor():
         for a in range(0,2):
           print("wating DHT11")
           time.sleep(1)
-          
-          sensor_all_data=[0,0,0]
+
           data_in = SerialIn.readline() 
           data_raw = data_in.decode('utf-8') 
           print(data_raw)   
@@ -69,19 +87,16 @@ def read_sensor():
   data_set['Co2']=Co2
   data_set['Temperature']=temperature
   data_set['Humidity']=humidity
-  # sensor_all_data[0]=Co2
-  # sensor_all_data[1]=temperature
-  # sensor_all_data[2]=humidity
   return 0
 
 def generateConfig():
       config = EdgeConfig()
       nodeConfig = NodeConfig(nodeType = constant.EdgeType['Gateway'])
       config.node = nodeConfig
-      deviceConfig = DeviceConfig(id = 'Dorm_323',
+      deviceConfig = DeviceConfig(id = 'Tr202',
       name = 'CO2_Temp_humi',
       description = 'Device',
-      deviceType = '323-2_Device',
+      deviceType = 'Tr202',
       retentionPolicyName = '')
         
       analog = AnalogTagConfig(name = 'Co2',
@@ -118,8 +133,8 @@ def generateConfig():
       deviceConfig.analogTagList.append(analog)
 
         
-      discrete = DiscreteTagConfig(name = 'DTag',
-      description = 'DTag ',
+      discrete = DiscreteTagConfig(name = 'ACmode',
+      description = 'ACmode',
       readOnly = False,
       arraySize = 0,
       state0 = '0',
@@ -127,8 +142,8 @@ def generateConfig():
       deviceConfig.discreteTagList.append(discrete)
       
         
-      text = TextTagConfig(name = 'TTag',
-      description = 'TTag ',
+      text = TextTagConfig(name = 'CourseTime',
+      description = 'CourseTime',
       readOnly = False,
       arraySize = 0)
       deviceConfig.textTagList.append(text)
@@ -138,37 +153,36 @@ def generateConfig():
 def generateData():
       edgeData = EdgeData()
   
-      deviceId = 'Dorm_323'
+      deviceId = 'Tr202'
       tagName = 'Co2'
-      read_sensor()
       value = data_set['Co2']
+
       tag = EdgeTag(deviceId, tagName, value)
       edgeData.tagList.append(tag)
 
-      deviceId = 'Dorm_323'
+      deviceId = 'Tr202'
       tagName = 'Temperature'
-      read_sensor()
       value = data_set['Temperature']
+
       tag = EdgeTag(deviceId, tagName, value)
       edgeData.tagList.append(tag)
 
-      deviceId = 'Dorm_323'
+      deviceId = 'Tr202'
       tagName = 'Humidity'
-      read_sensor()
       value = data_set['Humidity']
       tag = EdgeTag(deviceId, tagName, value)
       edgeData.tagList.append(tag)
       print(read_sensor())
         
-      deviceId = 'Dorm_323'
-      tagName = 'status'
-      value = 1
+      deviceId = 'Tr202'
+      tagName = 'ACmode'
+      value = data_set["ACfunc"]
       tag = EdgeTag(deviceId, tagName, value)
       edgeData.tagList.append(tag)
        
-      deviceId = 'Dorm_323'
-      tagName = 'text'
-      value = "running"
+      deviceId = 'Tr202'
+      tagName = 'CourseTime'
+      value = data_set["CourseTime"]
       tag = EdgeTag(deviceId, tagName, value)
       edgeData.tagList.append(tag)
 
@@ -176,11 +190,28 @@ def generateData():
       #edgeData.timestamp = datetime.datetime(2020,8,24,6,10,8)  # you can defne the timestamp(local time) of data 
       return edgeData
 
-# default_nodeId=233c19cb-325e-4209-a319-d8816b798e49
-# Credential Key=856e0a0ad738fe0fda4e23a3ccc165xk
+def Avgvalue_Cal():
+  if(data_set["Count"]<=9):
+    data_set["AvgCo2"][data_set["Count"]]=data_set["Co2"]
+    data_set["AvgTemp"][data_set["Count"]]=data_set["Temperature"]
+    data_set["AvgHumi"][data_set["Count"]]=data_set["Humidity"]
+    data_set["Count"]+=1
+  else:
+    data_set["Count"]=0
+  for i in range(3):
+     data_set['Avg'][i]=0
+  for i in range(10):
+     data_set['Avg'][0]+=data_set['AvgCo2'][i]/10
+  for i in range(10):
+     data_set['Avg'][1]+=data_set['AvgTemp'][i]/10
+  for i in range(10):
+     data_set['Avg'][2]+=data_set['AvgHumi'][i]/10
+    
+# default_nodeId=1ea9cb44-bd3e-4c1f-ba9c-df68ac712323
+# Credential Key=522eedd5e981fb65ea466be3268b67t1
 # DCCS API URL =https://api-dccs-ensaas.sa.wise-paas.com
 options = EdgeAgentOptions(
-  nodeId = '233c19cb-325e-4209-a319-d8816b798e49',        
+  nodeId = '1ea9cb44-bd3e-4c1f-ba9c-df68ac712323',        
   type = constant.EdgeType['Gateway'],                    # 節點類型 (Gateway, Device), 預設是 Gateway
   deviceId = 'deviceId',                                  # 若 type 為 Device, 則必填
   heartbeat = 60,                                         # 預設是 60 seconds
@@ -196,7 +227,7 @@ options = EdgeAgentOptions(
                                                           # 若連線類型是 DCCS, DCCSOptions 為必填
   DCCS = DCCSOptions(
     apiUrl = 'https://api-dccs-ensaas.sa.wise-paas.com/',           # DCCS API Url
-    credentialKey = '9764829d109bde7b3469518c96f53e02'    # Creadential key
+    credentialKey = '522eedd5e981fb65ea466be3268b67t1'    # Creadential key
   )
 )
 
@@ -211,11 +242,31 @@ print(course)
 while(1):
   config=generateConfig()
   edgeAgent.uploadConfig(action = constant.ActionType['Create'], edgeConfig = config)
+  
+  Avgvalue_Cal()
+  readtime()
+  if(data_set["Hour"]>7 and data_set["Hour"]<23):
+    # 預測模型
+    if(data_set['Course'][data_set['Weekday']][data_set["Hour"]+1]==1 and data_set["Min"]>50):
+      data_set['ACfunc']=2      
+      data_set['flag']=2
+    else:
+      # 開冷氣
+      if(data_set["Avg"][0]>data_set["Co2thre"] and data_set["Avg"][1]>data_set["Tempthre"]):
+        data_set['Course'][data_set['Weekday']][data_set["Hour"]-8]=1
+        data_set['ACfunc']=1
+      # 開除溼
+      elif(data_set["Avg"][0]>data_set["Co2thre"] and data_set["Avg"][2]>data_set["Humithre"]):
+        data_set['ACfunc']=2
+        data_set['flag']=1
+      else:
+        data_set['Course'][data_set['Weekday']][data_set["Hour"]-8]=0
+        data_set['ACfunc']=0
+        data_set['flag']=1
+  coding()
   data=generateData()
   result = edgeAgent.sendData(data)
-  print("sendData")
   time.sleep(0.1)
-  
   edgeAgent.uploadConfig(action = constant.ActionType['Delete'], edgeConfig = config)
   time.sleep(0.1)
-  print("delete_Data")
+  print(data_set)
