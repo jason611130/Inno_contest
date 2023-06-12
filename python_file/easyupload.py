@@ -7,6 +7,7 @@ import string
 import random
 import threading
 import numpy as np
+import requests
 
 from wisepaasdatahubedgesdk.EdgeAgent import EdgeAgent
 import wisepaasdatahubedgesdk.Common.Constants as constant
@@ -206,7 +207,17 @@ def Avgvalue_Cal():
      data_set['Avg'][1]+=data_set['AvgTemp'][i]/10
   for i in range(10):
      data_set['Avg'][2]+=data_set['AvgHumi'][i]/10
-    
+def line_notify(message):
+  token = 'pBKi8Q17Gz1nuJVoFd1F7zGbeukEKxzmA8NOvriRWwu'
+  headers = { "Authorization": "Bearer " + token }
+  data = { 'message': message }
+
+  # 要傳送的圖片檔案
+  # image = open('my_image.jpg', 'rb')
+  # files = { 'imageFile': image }
+  requests.post("https://notify-api.line.me/api/notify",
+      headers = headers, data = data, files = None)   
+
 # default_nodeId=1ea9cb44-bd3e-4c1f-ba9c-df68ac712323
 # Credential Key=522eedd5e981fb65ea466be3268b67t1
 # DCCS API URL =https://api-dccs-ensaas.sa.wise-paas.com
@@ -247,7 +258,7 @@ while(1):
   readtime()
   if(data_set["Hour"]>7 and data_set["Hour"]<23):
     # 預測模型
-    if(data_set['Course'][data_set['Weekday']][data_set["Hour"]+1]==1 and data_set["Min"]>50):
+    if(data_set['Course'][data_set['Weekday']][data_set["Hour"]-7]==1 and data_set["Min"]>50):
       data_set['ACfunc']=2      
       data_set['flag']=2
     else:
@@ -264,6 +275,7 @@ while(1):
         data_set['ACfunc']=0
         data_set['flag']=1
   coding()
+  line_notify(data_set["CourseTime"])
   data=generateData()
   result = edgeAgent.sendData(data)
   time.sleep(0.1)
