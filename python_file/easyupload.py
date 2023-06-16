@@ -24,8 +24,41 @@ data_set={"Course":course,"flag":0,"Co2":0,"Temperature":0,"Humidity":0,
           "AvgTemp":[25,25,25,25,25,25,25,25,25,25],
           "AvgHumi":[50,50,50,50,50,50,50,50,50,50],"Count":0,
           "Avg":[0,0,0],"Humithre":80,"Co2thre":1000,"Tempthre":26,
-          "CourseTime":"0000000000000000000000000000"}
+          "CourseTime":"0000000000000000000000000000","Rotate":0,
+          "DoorMovement":0,"Window1Movement":-71,"Window2Movement":124,"ACRotate":1.4        }
+# AC function 0 無動作
+# AC function 1 送風
+# AC function 2 除溼
+# AC function 3 開冷氣
 # --------------------------------------------
+class saas_composer_motion():
+  def dooropen():
+    data_set["DoorMovement"]=min(data_set["DoorMovement"]+0.2,1.5)
+
+  def doorclose():
+    data_set["DoorMovement"]=max(data_set["DoorMovement"]-1,0)
+  
+  def rotate():
+    if(data_set["Rotate"]>2):
+      data_set["Rotate"]=0
+    else:
+      data_set["Rotate"]+=0.2
+
+  def ACrotate():
+    if(data_set["ACRotate"]>2):
+      data_set["ACRotate"]=-0.4
+    else:
+      data_set["ACRotate"]+=0.2
+  # -71~-133
+  def windowopen1():
+    data_set["Window1Movement"]=max(data_set["Window1Movement"]-3,-133)
+  def windowclose1():
+    data_set["Window1Movement"]=max(data_set["Window1Movement"]+3,-71)
+  # 124~62
+  def windowopen2():
+    data_set["Window2Movement"]=max(data_set["Window2Movement"]-3,62)
+  def windowclose2():
+    data_set["Window2Movement"]=max(data_set["Window2Movement"]+3,124)
 
 def binary_to_hex(arr):
   binary_string = ''.join(str(bit) for bit in arr)  # 將陣列中的值串起來
@@ -61,7 +94,7 @@ def read_sensor():
   data_in = SerialIn.readline() 
   data_raw = data_in.decode('utf-8') 
   # print(data_raw)
-  
+  print(data_raw)
   while True:
       try:
         Co2=int(float(data_raw[27:31]))
@@ -141,8 +174,47 @@ def generateConfig():
       state0 = '0',
       state1 = '1')
       deviceConfig.discreteTagList.append(discrete)
+
+      discrete = DiscreteTagConfig(name = 'DoorMovement',
+      description = 'DoorMovement',
+      readOnly = False,
+      arraySize = 0,
+      state0 = '0',
+      state1 = '1')
+      deviceConfig.discreteTagList.append(discrete)
+
+      discrete = DiscreteTagConfig(name = 'Window1Movement',
+      description = 'Window1Movement',
+      readOnly = False,
+      arraySize = 0,
+      state0 = '0',
+      state1 = '1')
+      deviceConfig.discreteTagList.append(discrete)
+
+      discrete = DiscreteTagConfig(name = 'Window2Movement',
+      description = 'Window2Movement',
+      readOnly = False,
+      arraySize = 0,
+      state0 = '0',
+      state1 = '1')
+      deviceConfig.discreteTagList.append(discrete)
+
+      discrete = DiscreteTagConfig(name = 'Rotate',
+      description = 'Rotate',
+      readOnly = False,
+      arraySize = 0,
+      state0 = '0',
+      state1 = '1')
+      deviceConfig.discreteTagList.append(discrete)
+
+      discrete = DiscreteTagConfig(name = 'ACRotate',
+      description = 'ACRotate',
+      readOnly = False,
+      arraySize = 0,
+      state0 = '0',
+      state1 = '1')
+      deviceConfig.discreteTagList.append(discrete)
       
-        
       text = TextTagConfig(name = 'CourseTime',
       description = 'CourseTime',
       readOnly = False,
@@ -180,6 +252,37 @@ def generateData():
       value = data_set["ACfunc"]
       tag = EdgeTag(deviceId, tagName, value)
       edgeData.tagList.append(tag)
+
+      deviceId = 'Tr202'
+      tagName = 'DoorMovement'
+      value = data_set['DoorMovement']
+      tag = EdgeTag(deviceId, tagName, value)
+      edgeData.tagList.append(tag)
+
+      deviceId = 'Tr202'
+      tagName = 'Window1Movement'
+      value = data_set['Window1Movement']
+      tag = EdgeTag(deviceId, tagName, value)
+      edgeData.tagList.append(tag)
+
+      deviceId = 'Tr202'
+      tagName = 'Window2Movement'
+      value = data_set['Window2Movement']
+      tag = EdgeTag(deviceId, tagName, value)
+      edgeData.tagList.append(tag)
+
+      deviceId = 'Tr202'
+      tagName = 'Rotate'
+      value = data_set['Rotate']
+      tag = EdgeTag(deviceId, tagName, value)
+      edgeData.tagList.append(tag)
+
+      deviceId = 'Tr202'
+      tagName = 'ACRotate'
+      value = data_set['ACRotate']
+      tag = EdgeTag(deviceId, tagName, value)
+      edgeData.tagList.append(tag)
+       
        
       deviceId = 'Tr202'
       tagName = 'CourseTime'
@@ -208,7 +311,7 @@ def Avgvalue_Cal():
   for i in range(10):
      data_set['Avg'][2]+=data_set['AvgHumi'][i]/10
 def line_notify(message):
-  token = 'pBKi8Q17Gz1nuJVoFd1F7zGbeukEKxzmA8NOvriRWwu'
+  token = 'tpzezMNN5JInu9Rcn6UoU46IagxuSc4e9egSKeG46Pl'
   headers = { "Authorization": "Bearer " + token }
   data = { 'message': message }
 
@@ -222,7 +325,7 @@ def line_notify(message):
 # Credential Key=522eedd5e981fb65ea466be3268b67t1
 # DCCS API URL =https://api-dccs-ensaas.sa.wise-paas.com
 options = EdgeAgentOptions(
-  nodeId = '1ea9cb44-bd3e-4c1f-ba9c-df68ac712323',        
+  nodeId = '6a1c0a2e-f55c-4a3c-9a8b-4bfd0852df03',        
   type = constant.EdgeType['Gateway'],                    # 節點類型 (Gateway, Device), 預設是 Gateway
   deviceId = 'deviceId',                                  # 若 type 為 Device, 則必填
   heartbeat = 60,                                         # 預設是 60 seconds
@@ -238,7 +341,7 @@ options = EdgeAgentOptions(
                                                           # 若連線類型是 DCCS, DCCSOptions 為必填
   DCCS = DCCSOptions(
     apiUrl = 'https://api-dccs-ensaas.sa.wise-paas.com/',           # DCCS API Url
-    credentialKey = '522eedd5e981fb65ea466be3268b67t1'    # Creadential key
+    credentialKey = 'bd67a03190a46d7f7df5757c0b3a8bn5'    # Creadential key
   )
 )
 
@@ -249,7 +352,8 @@ config=generateConfig()
 edgeAgent.uploadConfig(action = constant.ActionType['Create'], edgeConfig = config)
 
 # read_sensor()
-print(course)
+# print(course)
+
 while(1):
   config=generateConfig()
   edgeAgent.uploadConfig(action = constant.ActionType['Create'], edgeConfig = config)
@@ -259,26 +363,41 @@ while(1):
   if(data_set["Hour"]>7 and data_set["Hour"]<23):
     # 預測模型
     if(data_set['Course'][data_set['Weekday']][data_set["Hour"]-7]==1 and data_set["Min"]>50):
-      data_set['ACfunc']=2      
+      data_set['ACfunc']=1     
       data_set['flag']=2
     else:
       # 開冷氣
       if(data_set["Avg"][0]>data_set["Co2thre"] and data_set["Avg"][1]>data_set["Tempthre"]):
         data_set['Course'][data_set['Weekday']][data_set["Hour"]-8]=1
-        data_set['ACfunc']=1
+        saas_composer_motion.ACrotate()
+        data_set['ACfunc']=3
       # 開除溼
       elif(data_set["Avg"][0]>data_set["Co2thre"] and data_set["Avg"][2]>data_set["Humithre"]):
         data_set['ACfunc']=2
         data_set['flag']=1
+        saas_composer_motion.ACrotate()
+      # 通知開窗並開啟電扇
+      elif(data_set["Avg"][0]>data_set["Co2thre"]):
+        data_set['ACfunc']=1
+        data_set['flag']=1
+        line_notify("\n請將窗戶及門窗打開保持通風")
+        saas_composer_motion.windowopen1()
+        saas_composer_motion.windowopen2()
+        saas_composer_motion.dooropen()
+        saas_composer_motion.rotate()
       else:
         data_set['Course'][data_set['Weekday']][data_set["Hour"]-8]=0
         data_set['ACfunc']=0
         data_set['flag']=1
+  
   coding()
-  line_notify(data_set["CourseTime"])
+  
+  # saas_composer_motion.rotate()
+  print(data_set['Window2Movement'])
+  
   data=generateData()
   result = edgeAgent.sendData(data)
-  time.sleep(0.1)
+  time.sleep(10)
   edgeAgent.uploadConfig(action = constant.ActionType['Delete'], edgeConfig = config)
   time.sleep(0.1)
-  print(data_set)
+  # print(data_set)
