@@ -8,6 +8,9 @@ import random
 import threading
 import numpy as np
 import requests
+import paho.mqtt.client as mqtt
+import requests
+import json
 
 from wisepaasdatahubedgesdk.EdgeAgent import EdgeAgent
 import wisepaasdatahubedgesdk.Common.Constants as constant
@@ -25,12 +28,59 @@ data_set={"Course":course,"flag":0,"Co2":0,"Temperature":0,"Humidity":0,
           "AvgHumi":[50,50,50,50,50,50,50,50,50,50],"Count":0,
           "Avg":[0,0,0],"Humithre":80,"Co2thre":1000,"Tempthre":26,
           "CourseTime":"0000000000000000000000000000","Rotate":0,
-          "DoorMovement":0,"Window1Movement":-71,"Window2Movement":124,"ACRotate":1.4        }
+          "DoorMovement":0,"Window1Movement":-71,"Window2Movement":124,"ACRotate":1.4,"ACswitch":0        }
 # AC function 0 無動作
 # AC function 1 送風
 # AC function 2 除溼
 # AC function 3 開冷氣
 # --------------------------------------------
+
+def get_session_and_login(username,password):
+    url="http://portal-datahub-trainingapps-eks004.sa.wise-paas.com/api/v1/Auth"
+    payload = json.dumps({
+        "username": username,
+        "password": password
+        })
+    headers = {
+        'accept': 'application/json',
+        'content-type': 'application/json',
+        }
+    s = requests.Session() 
+    response = s.request("POST", url, headers=headers, data=payload)
+    if response.status_code==200 :
+        res=json.loads(response.text)
+        return res['status'] == 'passed' , s
+    else:
+        return False,s
+def api_post(path,session,payload):
+    baseUrl="http://portal-datahub-trainingapps-eks004.sa.wise-paas.com/api"
+    headers = {
+        'accept': 'application/json',
+        'content-type': 'application/json',
+    }
+    url=baseUrl+path
+    response = session.request("POST", url, headers=headers, data=payload)
+    return response
+
+def catch_datahub_data(session):
+  path = "/v1/HistData/raw"
+  payload = json.dumps({
+  "tags": [
+    {
+      "nodeId": "8d518411-7235-45b2-b3ae-f7fc14ec06d6",
+      "deviceId": "Device1",
+      "tagName": "ATag1"
+    }
+  ],
+  "startTs": "2023-07-03T06:33:08.832Z",
+  "endTs": "2023-07-04T06:33:08.832Z",
+  "desc": False,
+  "count": 0
+  })
+  
+  response = api_post(path,session,payload)
+  return response
+
 class saas_composer_motion():
   def dooropen():
     data_set["DoorMovement"]=min(data_set["DoorMovement"]+0.2,1.5)
@@ -79,21 +129,19 @@ def readtime():
 # 抓日期(星期一是0星期日是6)
   data_set["Weekday"]=datetime.datetime.weekday(datetime.datetime.now())
     
-def predict_open_ac():
+def predict_open_ac(SerialIn):
 # predict open condition Co2 > 1000
 # 空調開後檢測CO2有無超標(有人)反之停止送風
-  read_sensor()
+  read_sensor(SerialIn)
   if(data_set['Co2']<=1000):
     #預測錯誤將下禮拜課表清空
      course[data_set["Weekday"]][data_set["Hour"]]=0
 
   return 0
-def read_sensor(): 
+def read_sensor(SerialIn): 
   # CO2  temperature humidity
-  SerialIn = serial.Serial("COM6",115200)
   data_in = SerialIn.readline() 
   data_raw = data_in.decode('utf-8') 
-  # print(data_raw)
   print(data_raw)
   while True:
       try:
@@ -166,7 +214,14 @@ def generateConfig():
       fractionDisplayFormat = 2)
       deviceConfig.analogTagList.append(analog)
 
-        
+      discrete = DiscreteTagConfig(name = 'Jason_AC_open',
+      description = 'Jason_AC_open',
+      readOnly = False,
+      arraySize = 0,
+      state0 = '0',
+      state1 = '1')
+      deviceConfig.discreteTagList.append(discrete)
+
       discrete = DiscreteTagConfig(name = 'ACmode',
       description = 'ACmode',
       readOnly = False,
@@ -241,11 +296,18 @@ def generateData():
       edgeData.tagList.append(tag)
 
       deviceId = 'Tr202'
+      tagName = 'Jason_AC_open'
+      value = data_set["ACswitch"]
+
+      tag = EdgeTag(deviceId, tagName, value)
+      edgeData.tagList.append(tag)
+
+      deviceId = 'Tr202'
       tagName = 'Humidity'
       value = data_set['Humidity']
       tag = EdgeTag(deviceId, tagName, value)
       edgeData.tagList.append(tag)
-      print(read_sensor())
+      # print(read_sensor())
         
       deviceId = 'Tr202'
       tagName = 'ACmode'
@@ -293,6 +355,36 @@ def generateData():
       edgeData.timestamp = datetime.datetime.now()
       #edgeData.timestamp = datetime.datetime(2020,8,24,6,10,8)  # you can defne the timestamp(local time) of data 
       return edgeData
+def open_AC_predict():
+   if(data_set["Hour"]>7 and data_set["Hour"]<21):
+    # 預測模型
+    if(data_set['Course'][data_set['Weekday']][data_set["Hour"]-7]==1 and data_set["Min"]>50):
+      data_set['ACfunc']=1     
+      data_set['flag']=2
+    else:
+      # 開冷氣
+      if(data_set["Avg"][0]>data_set["Co2thre"] and data_set["Avg"][1]>data_set["Tempthre"]):
+        data_set['Course'][data_set['Weekday']][data_set["Hour"]-7]=1
+        saas_composer_motion.ACrotate()
+        data_set['ACfunc']=3
+      # 開除溼
+      elif(data_set["Avg"][0]>data_set["Co2thre"] and data_set["Avg"][2]>data_set["Humithre"]):
+        data_set['ACfunc']=2
+        data_set['flag']=1
+        saas_composer_motion.ACrotate()
+      # 通知開窗並開啟電扇
+      elif(data_set["Avg"][0]>data_set["Co2thre"]):
+        data_set['ACfunc']=1
+        data_set['flag']=1
+        line_notify("\n請將窗戶及門窗打開保持通風")
+        saas_composer_motion.windowopen1()
+        saas_composer_motion.windowopen2()
+        saas_composer_motion.dooropen()
+        saas_composer_motion.rotate()
+      else:
+        data_set['Course'][data_set['Weekday']][data_set["Hour"]-7]=0
+        data_set['ACfunc']=0
+        data_set['flag']=1
 
 def Avgvalue_Cal():
   if(data_set["Count"]<=9):
@@ -325,7 +417,7 @@ def line_notify(message):
 # Credential Key=522eedd5e981fb65ea466be3268b67t1
 # DCCS API URL =https://api-dccs-ensaas.sa.wise-paas.com
 options = EdgeAgentOptions(
-  nodeId = '6a1c0a2e-f55c-4a3c-9a8b-4bfd0852df03',        
+  nodeId = '63803223-ff59-4deb-ad10-05632aff9612',        
   type = constant.EdgeType['Gateway'],                    # 節點類型 (Gateway, Device), 預設是 Gateway
   deviceId = 'deviceId',                                  # 若 type 為 Device, 則必填
   heartbeat = 60,                                         # 預設是 60 seconds
@@ -341,10 +433,11 @@ options = EdgeAgentOptions(
                                                           # 若連線類型是 DCCS, DCCSOptions 為必填
   DCCS = DCCSOptions(
     apiUrl = 'https://api-dccs-ensaas.sa.wise-paas.com/',           # DCCS API Url
-    credentialKey = 'bd67a03190a46d7f7df5757c0b3a8bn5'    # Creadential key
+    credentialKey = '8e28f9392789e1393593ae44fc4739kd'    # Creadential key
   )
 )
 
+SerialIn = serial.Serial("COM3",115200)
 edgeAgent = EdgeAgent( options = options )
 edgeAgent.connect()
 
@@ -360,44 +453,26 @@ while(1):
   
   Avgvalue_Cal()
   readtime()
-  if(data_set["Hour"]>7 and data_set["Hour"]<23):
-    # 預測模型
-    if(data_set['Course'][data_set['Weekday']][data_set["Hour"]-7]==1 and data_set["Min"]>50):
-      data_set['ACfunc']=1     
-      data_set['flag']=2
-    else:
-      # 開冷氣
-      if(data_set["Avg"][0]>data_set["Co2thre"] and data_set["Avg"][1]>data_set["Tempthre"]):
-        data_set['Course'][data_set['Weekday']][data_set["Hour"]-8]=1
-        saas_composer_motion.ACrotate()
-        data_set['ACfunc']=3
-      # 開除溼
-      elif(data_set["Avg"][0]>data_set["Co2thre"] and data_set["Avg"][2]>data_set["Humithre"]):
-        data_set['ACfunc']=2
-        data_set['flag']=1
-        saas_composer_motion.ACrotate()
-      # 通知開窗並開啟電扇
-      elif(data_set["Avg"][0]>data_set["Co2thre"]):
-        data_set['ACfunc']=1
-        data_set['flag']=1
-        line_notify("\n請將窗戶及門窗打開保持通風")
-        saas_composer_motion.windowopen1()
-        saas_composer_motion.windowopen2()
-        saas_composer_motion.dooropen()
-        saas_composer_motion.rotate()
-      else:
-        data_set['Course'][data_set['Weekday']][data_set["Hour"]-8]=0
-        data_set['ACfunc']=0
-        data_set['flag']=1
+  open_AC_predict()
   
+  is_login , s = get_session_and_login( "jason611130@gmail.com","Jason910228!")
+  print("Login :",is_login)
+  response = catch_datahub_data(s)
+  res=json.loads(response.text)
+  # print(response.text)
+  print(res[0]['values'][0]['value'])
   coding()
   
-  # saas_composer_motion.rotate()
-  print(data_set['Window2Movement'])
   
-  data=generateData()
+  if(res[0]['values'][0]['value']==200):
+     data = "O"
+  else:
+     data = "X"
+  SerialIn.write(data.encode())
+  read_sensor(SerialIn)
+  data = generateData()
   result = edgeAgent.sendData(data)
-  time.sleep(10)
+  time.sleep(2)
   edgeAgent.uploadConfig(action = constant.ActionType['Delete'], edgeConfig = config)
   time.sleep(0.1)
-  # print(data_set)
+  print(data_set)

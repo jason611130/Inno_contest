@@ -20,7 +20,7 @@ SimpleDHT11 dht11(pinDHT11);
 void setup() {
   Serial.begin(115200);
   while (!Serial) { delay(10); } // Wait for serial console to open!
-
+  pinMode( 2 , OUTPUT );
   Serial.println("SGP30 test");
 
   if (! sgp.begin()){
@@ -37,6 +37,7 @@ void setup() {
 }
 
 int counter = 0;
+int char_OX = '1';
 void loop() {
   // If you have a temperature / humidity sensor, you can set the absolute humidity to enable the humditiy compensation for the air quality signals
   //float temperature = 22.1; // [°C]
@@ -45,7 +46,16 @@ void loop() {
 
   byte temperature = 0;
   byte humidity = 0;
-  int err = SimpleDHTErrSuccess;
+  
+  char_OX =Serial.read() ; 
+  if(char_OX=='O'||char_OX=='X'){
+    if(char_OX=='O'){
+      digitalWrite(2,HIGH);
+    }
+    else{
+      digitalWrite(2,LOW);
+    }
+    int err = SimpleDHTErrSuccess;
   if ((err = dht11.read(&temperature, &humidity, NULL)) != SimpleDHTErrSuccess) {
     Serial.print("Read DHT11 failed, err="); Serial.print(SimpleDHTErrCode(err));
     Serial.print(","); Serial.println(SimpleDHTErrDuration(err)); delay(1000);
@@ -72,20 +82,8 @@ void loop() {
   // Serial.print("Raw Ethanol "); Serial.print(sgp.rawEthanol); Serial.println("");
 
   
-  
- 
   delay(1000);
-
-  // counter++;
-  // if (counter == 30) {
-  //   counter = 0;
-
-  //   uint16_t TVOC_base, eCO2_base;
-  //   if (! sgp.getIAQBaseline(&eCO2_base, &TVOC_base)) {
-  //     Serial.println("Failed to get baseline readings");
-  //     return;
-  //   }
-  //   Serial.print("****Baseline values: eCO2: 0x"); Serial.println(eCO2_base, HEX);
-  //   // Serial.print(" & TVOC: 0x"); Serial.println(TVOC_base, HEX);
-  // }
+  }
+  
+  
 }

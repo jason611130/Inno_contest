@@ -1,5 +1,5 @@
 import serial
-SerialIn = serial.Serial("COM6",115200)
+SerialIn = serial.Serial("COM3",115200)
 sensor_all_data=[0,0,0]
 data_in = SerialIn.readline() 
 data_raw = data_in.decode('utf-8') 
