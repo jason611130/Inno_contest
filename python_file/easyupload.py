@@ -1,4 +1,4 @@
-import datetime
+from datetime import datetime, timedelta
 import time
 import tkinter 
 from tkinter import ttk
@@ -22,13 +22,22 @@ import serial
 # --------------------------------------------
 # init value
 course = np.ones((7,14),dtype=int)
+course = [1,0,0,0,0,0,0,
+          1,0,1,0,0,0,0,
+          0,0,0,0,0,0,0,
+          0,0,0,1,0,0,0,
+          0,0,0,0,0,0,0,
+          0,0,0,0,0,0,0,
+          0,0,0,0,1,0,0,]
 data_set={"Course":course,"flag":0,"Co2":0,"Temperature":0,"Humidity":0,
           "Min":0,"Hour":0,"Weekday":0,"ACfunc":0,"AvgCo2":[400,400,400,400,400,400,400,400,400,400],
           "AvgTemp":[25,25,25,25,25,25,25,25,25,25],
           "AvgHumi":[50,50,50,50,50,50,50,50,50,50],"Count":0,
           "Avg":[0,0,0],"Humithre":80,"Co2thre":1000,"Tempthre":26,
           "CourseTime":"0000000000000000000000000000","Rotate":0,
-          "DoorMovement":0,"Window1Movement":-71,"Window2Movement":124,"ACRotate":1.4,"ACswitch":0        }
+          "DoorMovement":0,"Window1Movement":-71,"Window2Movement":124,"ACRotate":1.4,"ACswitch":0,
+          "Time":"0","ACOpen":"","FanDoorOpen":"","windowopen":""
+          }
 # AC function 0 無動作
 # AC function 1 送風
 # AC function 2 除溼
@@ -67,19 +76,23 @@ def catch_datahub_data(session):
   payload = json.dumps({
   "tags": [
     {
-      "nodeId": "8d518411-7235-45b2-b3ae-f7fc14ec06d6",
-      "deviceId": "Device1",
-      "tagName": "ATag1"
+      "nodeId": "63803223-ff59-4deb-ad10-05632aff9612",
+      "deviceId": "Tr202",
+      "tagName": "TTag"
     }
   ],
-  "startTs": "2023-07-03T06:33:08.832Z",
-  "endTs": "2023-07-04T06:33:08.832Z",
+  "startTs": data_set['Time'],
+  "endTs": "2023-07-20T06:33:08.832Z",
   "desc": False,
   "count": 0
   })
   
   response = api_post(path,session,payload)
   return response
+def shift_time(current_time, shift):
+    current_time = datetime.strptime(current_time, '%Y-%m-%d %H:%M:%S')
+    shifted_time = current_time + timedelta(**shift)
+    return shifted_time.strftime('%Y-%m-%d %H:%M:%S')
 
 class saas_composer_motion():
   def dooropen():
@@ -124,10 +137,19 @@ def coding():
 
 def readtime():
   # 抓小時
-  data_set["Min"]=int(str(datetime.datetime.now())[14:16])
-  data_set["Hour"]=int(str(datetime.datetime.now())[11:13])
+  
+  current_time = str(datetime.now())[0:19]
+  shift = {'days': 0, 'hours': -8, 'minutes': 0, 'seconds': -10}
+
+  shifted_time = shift_time(current_time, shift)
+  print(shifted_time)
+  data_set["Time"]=shifted_time[0:10]+'T'+shifted_time[11:19]+".000Z"
+    
+
+  data_set["Min"]=int(str(datetime.now())[14:16])
+  data_set["Hour"]=int(str(datetime.now())[11:13])
 # 抓日期(星期一是0星期日是6)
-  data_set["Weekday"]=datetime.datetime.weekday(datetime.datetime.now())
+  data_set["Weekday"]=datetime.weekday(datetime.now())
     
 def predict_open_ac(SerialIn):
 # predict open condition Co2 > 1000
@@ -149,7 +171,6 @@ def read_sensor(SerialIn):
         break
       except ValueError:
         Co2=int(float(data_raw[27:30]))
-
   while True:
       try:
         temperature=int(float(data_raw[6:8]))
@@ -276,6 +297,22 @@ def generateConfig():
       arraySize = 0)
       deviceConfig.textTagList.append(text)
       config.node.deviceList.append(deviceConfig)
+
+      text = TextTagConfig(name = 'TTag',
+      description = 'TTag',
+      readOnly = False,
+      arraySize = 0)
+      deviceConfig.textTagList.append(text)
+      config.node.deviceList.append(deviceConfig)
+
+      for i in range(49):
+        discrete = DiscreteTagConfig(name = 'classtime'+str(i),
+        description = 'classtime'+str(i),
+        readOnly = False,
+        arraySize = 0,
+        state0 = '0',
+        state1 = '1')
+        deviceConfig.discreteTagList.append(discrete)
       return config
 
 def generateData():
@@ -352,7 +389,19 @@ def generateData():
       tag = EdgeTag(deviceId, tagName, value)
       edgeData.tagList.append(tag)
 
-      edgeData.timestamp = datetime.datetime.now()
+      deviceId = 'Tr202'
+      tagName = 'TTag'
+      value = False
+      tag = EdgeTag(deviceId, tagName, value)
+      edgeData.tagList.append(tag)
+      
+      for i in range(49):
+        deviceId = 'Tr202'
+        tagName = "classtime"+str(i)
+        value = data_set["Course"][i]
+        tag = EdgeTag(deviceId, tagName, value)
+        edgeData.tagList.append(tag)
+        edgeData.timestamp = datetime.now()
       #edgeData.timestamp = datetime.datetime(2020,8,24,6,10,8)  # you can defne the timestamp(local time) of data 
       return edgeData
 def open_AC_predict():
@@ -417,7 +466,7 @@ def line_notify(message):
 # Credential Key=522eedd5e981fb65ea466be3268b67t1
 # DCCS API URL =https://api-dccs-ensaas.sa.wise-paas.com
 options = EdgeAgentOptions(
-  nodeId = '63803223-ff59-4deb-ad10-05632aff9612',        
+  nodeId = '65071f55-d2dc-4f86-9050-2261f37cdc04',        
   type = constant.EdgeType['Gateway'],                    # 節點類型 (Gateway, Device), 預設是 Gateway
   deviceId = 'deviceId',                                  # 若 type 為 Device, 則必填
   heartbeat = 60,                                         # 預設是 60 seconds
@@ -433,7 +482,7 @@ options = EdgeAgentOptions(
                                                           # 若連線類型是 DCCS, DCCSOptions 為必填
   DCCS = DCCSOptions(
     apiUrl = 'https://api-dccs-ensaas.sa.wise-paas.com/',           # DCCS API Url
-    credentialKey = '8e28f9392789e1393593ae44fc4739kd'    # Creadential key
+    credentialKey = '0cd7e372c91a971813aac67982ac1der'    # Creadential key
   )
 )
 
@@ -446,33 +495,36 @@ edgeAgent.uploadConfig(action = constant.ActionType['Create'], edgeConfig = conf
 
 # read_sensor()
 # print(course)
-
+data1 = "X"
 while(1):
-  config=generateConfig()
-  edgeAgent.uploadConfig(action = constant.ActionType['Create'], edgeConfig = config)
   
   Avgvalue_Cal()
   readtime()
   open_AC_predict()
   
-  is_login , s = get_session_and_login( "jason611130@gmail.com","Jason910228!")
+  is_login , s = get_session_and_login( "smallfishandkitty@gmail.com","Abcd.1234")
   print("Login :",is_login)
   response = catch_datahub_data(s)
   res=json.loads(response.text)
-  # print(response.text)
-  print(res[0]['values'][0]['value'])
-  coding()
-  
-  
-  if(res[0]['values'][0]['value']==200):
-     data = "O"
-  else:
-     data = "X"
-  SerialIn.write(data.encode())
+  while True:
+    try:   
+      recive = res[0]["values"][0]["value"]
+      break
+    except IndexError:
+      recive = "None"
+      break
+
+  match recive:
+    case "True":
+      data1 = "O"
+    case "False":
+      data1 = "X"
+    case "none":
+      print("none")
+    
+  SerialIn.write(data1.encode())
   read_sensor(SerialIn)
   data = generateData()
   result = edgeAgent.sendData(data)
-  time.sleep(2)
-  edgeAgent.uploadConfig(action = constant.ActionType['Delete'], edgeConfig = config)
-  time.sleep(0.1)
   print(data_set)
+  time.sleep(2)

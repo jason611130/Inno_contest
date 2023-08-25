@@ -82,7 +82,7 @@ void loop() {
   // Serial.print("Raw Ethanol "); Serial.print(sgp.rawEthanol); Serial.println("");
 
   
-  delay(1000);
+  delay(1500);
   }
   
   

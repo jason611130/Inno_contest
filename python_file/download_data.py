@@ -33,15 +33,15 @@ def catch_datahub_data(session):
   payload = json.dumps({
   "tags": [
     {
-      "nodeId": "8d518411-7235-45b2-b3ae-f7fc14ec06d6",
-      "deviceId": "Device1",
-      "tagName": "ATag1"
+      "nodeId": "63803223-ff59-4deb-ad10-05632aff9612",
+      "deviceId": "Tr202",
+      "tagName": "TTag"
     }
   ],
-  "startTs": "2023-07-03T06:33:08.832Z",
-  "endTs": "2023-07-04T06:33:08.832Z",
+  "startTs": "2023-07-05T13:39:39.832Z",
+  "endTs": "2023-07-05T21:33:40.832Z",
   "desc": False,
-  "count": 0
+  "count": 10
   })
   
   response = api_post(path,session,payload)
@@ -53,6 +53,6 @@ is_login , s = get_session_and_login( "jason611130@gmail.com","Jason910228!")
 print("Login :",is_login)
 
 response = catch_datahub_data(s)
-# print(response.text)
+print(response.text)
 res=json.loads(response.text)
-print(res[0]['values'][0]['value'])
+# print(res[0]['values'][0]['value'])
